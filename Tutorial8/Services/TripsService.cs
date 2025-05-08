@@ -54,7 +54,7 @@ public class TripsService : ITripsService
     {
         var dict = new Dictionary<int, TripDTO>();
 
-        string sql = "SELECT Trip.IdTrip, Name, Description, DateFrom, DateTo, MaxPeople, RegisteredAt, PaymentDate\nFROM Trip\nJOIN s29826.Client_Trip CT on Trip.IdTrip = CT.IdTrip\nJOIN s29826.Client C on C.IdClient = CT.IdClient\nWHERE C.IdClient = @id";
+        string sql = "SELECT Trip.IdTrip, Trip.Name,  Description, DateFrom, DateTo, MaxPeople, C2.Name AS C, RegisteredAt, PaymentDate\nFROM Trip\nJOIN s29826.Client_Trip CT on Trip.IdTrip = CT.IdTrip\nJOIN s29826.Client C on C.IdClient = CT.IdClient\nJOIN s29826.Country_Trip T on Trip.IdTrip = T.IdTrip\nJOIN s29826.Country C2 on C2.IdCountry = T.IdCountry\nWHERE C.IdClient = @id";
         
         using (SqlConnection conn = new SqlConnection(_connectionString))
         using (SqlCommand cmd = new SqlCommand(sql, conn))
@@ -67,6 +67,7 @@ public class TripsService : ITripsService
                 while (await reader.ReadAsync())
                 {
                     int tripId = reader.GetInt32(reader.GetOrdinal("IdTrip"));
+                    string country = reader.GetString(reader.GetOrdinal("C"));
 
                     if (!dict.TryGetValue(tripId, out var dto))
                     {
@@ -80,14 +81,32 @@ public class TripsService : ITripsService
                             MaxPeople = reader.GetInt32(reader.GetOrdinal("MaxPeople")),
                             RegisteredAt = reader.GetInt32(reader.GetOrdinal("RegisteredAt")),
                             PaymentDate = reader.GetInt32(reader.GetOrdinal("PaymentDate")),
+                            Countries = new List<CountryDTO>()
                         };
                         dict.Add(tripId, dto);
                     }
+                    dto.Countries.Add(new CountryDTO {Name = country});
                 }
             }
         }
 
 
         return dict.Values.ToList();
+    }
+
+    public async Task AddClientToTrip(int idClient, int idTrip)
+    {
+        string sql = "INSERT INTO Client_Trip (IdClient, IdTrip, RegisteredAt, PaymentDate)\nVALUES (@IdClient, @IdTrip, CONVERT(int, GETDATE()), CONVERT(int, GETDATE()))";
+        
+        using (SqlConnection conn = new SqlConnection(_connectionString))
+        using (SqlCommand cmd = new SqlCommand(sql, conn))
+        {
+            cmd.Parameters.AddWithValue("@IdClient", idClient);
+            cmd.Parameters.AddWithValue("@IdTrip", idTrip);
+
+            await conn.OpenAsync();
+
+            await cmd.ExecuteNonQueryAsync();
+        }
     }
 }

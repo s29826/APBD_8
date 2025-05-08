@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Tutorial8.Models.DTOs;
 using Tutorial8.Services;
 
 namespace Tutorial8.Controllers
@@ -34,6 +35,13 @@ namespace Tutorial8.Controllers
                 return NotFound();
             }
             return Ok(trip);
+        }
+
+        [HttpPut("/api/clients/{clientId}/trips/{tripId}")]
+        public async Task<IActionResult> AddClientToTrip(int clientId, int tripId)
+        {
+            await _tripsService.AddClientToTrip(clientId, tripId);
+            return NoContent();
         }
     }
 }

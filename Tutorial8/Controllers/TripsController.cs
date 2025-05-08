@@ -37,11 +37,18 @@ namespace Tutorial8.Controllers
             return Ok(trip);
         }
 
-        [HttpPut("/api/clients/{clientId}/trips/{tripId}")]
+        [HttpPut("/api/clients/{clientId}/[controller]/{tripId}")]
         public async Task<IActionResult> AddClientToTrip(int clientId, int tripId)
         {
             await _tripsService.AddClientToTrip(clientId, tripId);
-            return NoContent();
+            return Ok();
+        }
+
+        [HttpDelete("/api/clients/{clientId}/[controller]/{tripId}")]
+        public async Task<IActionResult> DeleteClientFromTrip(int clientId, int tripId)
+        {
+            await _tripsService.DeleteClientFromTrip(clientId, tripId);
+            return Ok();
         }
     }
 }

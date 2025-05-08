@@ -109,4 +109,20 @@ public class TripsService : ITripsService
             await cmd.ExecuteNonQueryAsync();
         }
     }
+
+    public async Task DeleteClientFromTrip(int idClient, int idTrip)
+    {
+        string sql = "DELETE FROM Client_Trip\nWHERE IdClient = @idClient AND IdTrip = @idTrip";
+        
+        using (SqlConnection conn = new SqlConnection(_connectionString))
+        using (SqlCommand cmd = new SqlCommand(sql, conn))
+        {
+            cmd.Parameters.AddWithValue("@idClient", idClient);
+            cmd.Parameters.AddWithValue("@idTrip", idTrip);
+
+            await conn.OpenAsync();
+
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
 }

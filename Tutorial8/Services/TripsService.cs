@@ -11,7 +11,11 @@ public class TripsService : ITripsService
     {
         var dict = new Dictionary<int, TripDTO>();
         
-        string command = "SELECT Trip.IdTrip, Trip.Name, Description, DateFrom, DateTo, MaxPeople, C.Name AS C\nFROM Trip\nJOIN s29826.Country_Trip CT on Trip.IdTrip = CT.IdTrip\nJOIN s29826.Country C on CT.IdCountry = C.IdCountry";
+        //Pobieram wszstkie informacje o wycieczce oraz za pomocą JOIN także o krajach do niej przypisanych
+        string command = "SELECT Trip.IdTrip, Trip.Name, Description, DateFrom, DateTo, MaxPeople, C.Name AS C\n" +
+                         "FROM Trip\n" +
+                         "JOIN s29826.Country_Trip CT on Trip.IdTrip = CT.IdTrip\n" +
+                         "JOIN s29826.Country C on CT.IdCountry = C.IdCountry";
         
         using (SqlConnection conn = new SqlConnection(_connectionString))
         using (SqlCommand cmd = new SqlCommand(command, conn))
@@ -41,25 +45,31 @@ public class TripsService : ITripsService
                     }
                     dto.Countries.Add(new CountryDTO {Name = country});
                 }
-
             }
-
         }
         
 
         return dict.Values.ToList();
     }
 
-    public async Task<List<TripDTO>> GetTrip(int id)
+    public async Task<List<TripMainDTO>> GetTrip(int clientId)
     {
-        var dict = new Dictionary<int, TripDTO>();
+        var dict = new Dictionary<int, TripMainDTO>();
 
-        string sql = "SELECT Trip.IdTrip, Trip.Name,  Description, DateFrom, DateTo, MaxPeople, C2.Name AS C, RegisteredAt, PaymentDate\nFROM Trip\nJOIN s29826.Client_Trip CT on Trip.IdTrip = CT.IdTrip\nJOIN s29826.Client C on C.IdClient = CT.IdClient\nJOIN s29826.Country_Trip T on Trip.IdTrip = T.IdTrip\nJOIN s29826.Country C2 on C2.IdCountry = T.IdCountry\nWHERE C.IdClient = @id";
+        //Pobieram wszystkie informację o wycieczce, a także o krajach, które odwiedzi, ale także informację o rejestracji
+        //klienta na wycieczkę oraz szukam odpowieniego ID klienta, stąd tyle JOINów
+        string sql = "SELECT Trip.IdTrip, Trip.Name,  Description, DateFrom, DateTo, MaxPeople, C2.Name AS C, RegisteredAt, PaymentDate\n" +
+                     "FROM Trip\n" +
+                     "JOIN s29826.Client_Trip CT on Trip.IdTrip = CT.IdTrip\n" +
+                     "JOIN s29826.Client C on C.IdClient = CT.IdClient\n" +
+                     "JOIN s29826.Country_Trip T on Trip.IdTrip = T.IdTrip\n" +
+                     "JOIN s29826.Country C2 on C2.IdCountry = T.IdCountry\n" +
+                     "WHERE C.IdClient = @id";
         
         using (SqlConnection conn = new SqlConnection(_connectionString))
         using (SqlCommand cmd = new SqlCommand(sql, conn))
         {
-            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@id", clientId);
             await conn.OpenAsync();
 
             using (var reader = await cmd.ExecuteReaderAsync())
@@ -71,7 +81,7 @@ public class TripsService : ITripsService
 
                     if (!dict.TryGetValue(tripId, out var dto))
                     {
-                        dto = new TripDTO()
+                        dto = new TripMainDTO()
                         {
                             Id = tripId,
                             Name = reader.GetString(reader.GetOrdinal("Name")),
@@ -94,25 +104,78 @@ public class TripsService : ITripsService
         return dict.Values.ToList();
     }
 
-    public async Task AddClientToTrip(int idClient, int idTrip)
+    public async Task<bool> DoesTripExist(int tripId)
     {
-        string sql = "INSERT INTO Client_Trip (IdClient, IdTrip, RegisteredAt, PaymentDate)\nVALUES (@IdClient, @IdTrip, CONVERT(int, GETDATE()), CONVERT(int, GETDATE()))";
+        //Zwracam liczbę wycieczek, aby sprawdzić, czy taka istnieje dla danego klienta
+        string sql = "SELECT COUNT(*)\n" +
+                     "FROM Client_Trip\n" +
+                     "WHERE IdClient = @id";
         
         using (SqlConnection conn = new SqlConnection(_connectionString))
         using (SqlCommand cmd = new SqlCommand(sql, conn))
         {
-            cmd.Parameters.AddWithValue("@IdClient", idClient);
-            cmd.Parameters.AddWithValue("@IdTrip", idTrip);
+            cmd.Parameters.AddWithValue("@id", tripId);
+            
+            await conn.OpenAsync();
+            
+            var result = await cmd.ExecuteScalarAsync();
+            int val = Convert.ToInt32(result);
+            
+            
+            return val > 0;
+        }
+    }
+
+    public async Task<bool> IsTripFull(int tripId)
+    {
+       await using var conn = new SqlConnection(_connectionString);
+       await conn.OpenAsync();
+
+       //Pobieram aktualną liczbę osób zapisanych na daną wycieczkę
+       await using var cmdCounter = new SqlCommand("SELECT COUNT(*)\n" +
+                                                   "FROM Client_Trip\n" +
+                                                   "WHERE IdTrip = @id", conn);
+       cmdCounter.Parameters.AddWithValue("@id", tripId);
+       int counter = Convert.ToInt32(await cmdCounter.ExecuteScalarAsync());
+
+       //Pobieram maksymalną dopuszczalną liczbę osób na daną wycieczkę
+       await using var cmdFull = new SqlCommand("SELECT MaxPeople\n" +
+                                                "FROM Trip\n" +
+                                                "WHERE IdTrip = @id", conn);
+       cmdFull.Parameters.AddWithValue("@id", tripId);
+       int full = Convert.ToInt32(await cmdFull.ExecuteScalarAsync());
+
+
+       return counter >= full;
+    }
+
+    public async Task<bool> DoesRegistartionExist(int clientId, int tripId)
+    {
+        //Zwracam liczbę rejestracji, aby sprawdzić, czy taka istnieje
+        string sql = "SELECT COUNT(*)\n" +
+                     "FROM Client_Trip\n" +
+                     "WHERE IdTrip = @idTrip AND IdClient = @idClient;";
+        
+        using (SqlConnection conn = new SqlConnection(_connectionString))
+        using (SqlCommand cmd = new SqlCommand(sql, conn))
+        {
+            cmd.Parameters.AddWithValue("@idTrip", tripId);
+            cmd.Parameters.AddWithValue("@idClient", clientId);
 
             await conn.OpenAsync();
 
-            await cmd.ExecuteNonQueryAsync();
+            int result = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+            
+            
+            return result > 0;
         }
     }
 
     public async Task DeleteClientFromTrip(int idClient, int idTrip)
     {
-        string sql = "DELETE FROM Client_Trip\nWHERE IdClient = @idClient AND IdTrip = @idTrip";
+        //Usuwam klienta z danej wycieczki uzywając ID przekazanych w argumentach
+        string sql = "DELETE FROM Client_Trip\n" +
+                     "WHERE IdClient = @idClient AND IdTrip = @idTrip";
         
         using (SqlConnection conn = new SqlConnection(_connectionString))
         using (SqlCommand cmd = new SqlCommand(sql, conn))
